@@ -1,0 +1,13 @@
+
+Write a short story of approximately 600-800 words. The story should be in the mystery genre.
+
+Setting: A remote lighthouse on a rocky coast during a stormy autumn night.
+Protagonist: An aging lighthouse keeper named Edmund who has tended the light for thirty years.
+Plot: A small rowing boat washes ashore carrying a waterlogged leather satchel. Inside the satchel, Edmund finds a series of handwritten letters addressed to someone named "V." and a compass engraved with a name he recognizes. Over the course of the night, as the storm worsens, Edmund pieces together what happened to the ship that sank offshore twenty years ago — an event that changed his life.
+
+Requirements:
+1. Write in third-person limited perspective.
+2. Use vivid, sensory descriptions: the smell of salt and oil, the sound of the wind and the Fresnel lens rotating, the cold, the dark.
+3. Include at least one flashback.
+4. End with an ambiguous, unresolved conclusion — do NOT explain everything.
+5. Do not use any markdown formatting. Write only the story text itself, starting with the story's first sentence.

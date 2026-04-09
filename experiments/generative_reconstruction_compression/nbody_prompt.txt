@@ -1,0 +1,14 @@
+
+Write a comprehensive, professional, 500-line N-body simulation in Python using the Pygame library.
+
+Requirements:
+1. The simulation must allow the user to add new astronomical objects dynamically by clicking the mouse. The mass / velocity of the new object should be determined by mouse drag or click duration.
+2. The visuals must be variable and beautiful: varying colors based on mass or velocity, dynamic trails showing previous paths, and a star-field background.
+3. The objects must have varying masses, affecting their gravitational pull and visual size.
+4. Implement a robust numerical integration method (e.g., Runge-Kutta 4th Order or Velocity Verlet) to ensure stable orbits.
+5. Include a UI overlay (text on screen) showing the total number of bodies, current FPS, and controls.
+6. Handle collisions: if two bodies get too close, they should either merge into a larger body (conserving momentum) or explicitly bounce.
+7. Include comprehensive docstrings and comments. Make the code modular with clean classes (e.g., `Body`, `Simulation`, `UI`).
+8. The total file length must be around 100 lines. Please flesh out the physics, rendering, and interaction logic extensively to meet this length requirement. Provide ONLY valid Python code without any markdown wrappers.
+
+Start with standard imports and go from there.

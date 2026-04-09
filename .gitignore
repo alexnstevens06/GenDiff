@@ -1,0 +1,7 @@
+.env
+.venv
+__pycache__
+*.pyc
+
+encoded_documents
+source_text
