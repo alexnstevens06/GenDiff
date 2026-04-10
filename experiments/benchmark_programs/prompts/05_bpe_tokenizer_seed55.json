@@ -1,0 +1,5 @@
+{
+  "seed": 55,
+  "system": "You are an expert Python programmer. Write clean, idiomatic, well-commented code.",
+  "user": "Write a complete, self-contained Python module implementing a minimal Byte-Pair Encoding (BPE) tokenizer from scratch using only the standard library.\n\nThe `BPETokenizer` class must support:\n  - `train(self, corpus: str, vocab_size: int) -> None`\n  - `encode(self, text: str) -> list[int]`\n  - `decode(self, ids: list[int]) -> str`\n\nAlgorithm sketch:\n  1. Start with character-level vocabulary (each UTF-8 byte is a token).\n  2. Repeatedly find the most frequent adjacent pair, merge it into a new token, and update the vocabulary until `vocab_size` is reached.\n\nInclude thorough docstrings and a `__main__` block that trains on the sentence \"the quick brown fox jumps over the lazy dog\" repeated 10 times, encodes it, decodes it, and asserts the round-trip is lossless."
+}

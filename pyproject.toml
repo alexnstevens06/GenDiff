@@ -1,20 +1,22 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
-name = "llmzip_extension"
+name = "gendiff"
 version = "0.1.0"
-description = "Research project for LLMzip extension and GRC"
+description = "Research project for LLMzip-based generative reconstruction compression"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "torch",
     "numpy",
     "transformers",
+    "accelerate",
     "pydantic",
+    "matplotlib",
+    "python-dotenv",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["core*", "experiments*", "utils*"]
+[tool.hatch.build.targets.wheel]
+packages = ["core", "experiments", "utils"]

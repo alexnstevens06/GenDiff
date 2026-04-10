@@ -63,7 +63,7 @@ CONTEXT_WINDOW = 100
 
 
 def load_model():
-    model_name = "Qwen/Qwen2.5-3B"
+    model_name = "Qwen/Qwen3.5-4B-Base"
     print(f"Loading {model_name}...")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(

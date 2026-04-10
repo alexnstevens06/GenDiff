@@ -1,7 +1,20 @@
 .env
 .venv
-__pycache__
+__pycache__/
 *.pyc
+*.pyo
+
+# Build / packaging artifacts
+*.egg-info/
+dist/
+build/
+.hatch/
+
+# Benchmark outputs
+*.llmzip
+*.grczip
+tps_benchmark.png
+benchmark_results.json
 
 encoded_documents
 source_text

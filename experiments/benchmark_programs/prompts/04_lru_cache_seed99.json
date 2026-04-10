@@ -1,0 +1,5 @@
+{
+  "seed": 99,
+  "system": "You are an expert Python programmer. Write clean, idiomatic, well-commented code.",
+  "user": "Write a complete, self-contained Python module implementing an LRU (Least-Recently-Used) cache using only the standard library. Use `collections.OrderedDict` internally.\n\nThe `LRUCache` class must support:\n  - `__init__(self, capacity: int)`\n  - `get(self, key) -> any`  (returns None on miss)\n  - `put(self, key, value) -> None`\n  - `__len__(self) -> int`\n  - `__repr__(self) -> str`\n\nInclude thorough docstrings and a `__main__` block that creates a cache of capacity 3, performs at least 8 operations (mix of gets and puts), and prints the cache state and eviction events after each operation."
+}

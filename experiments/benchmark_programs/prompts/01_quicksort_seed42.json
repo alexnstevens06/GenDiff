@@ -1,0 +1,5 @@
+{
+  "seed": 42,
+  "system": "You are an expert Python programmer. Write clean, idiomatic, well-commented code.",
+  "user": "Write a complete, self-contained Python module that implements quicksort from scratch (no calls to any sorting library). Provide two implementations:\n\n1. An in-place version that sorts a list by mutating it.\n2. A pure functional version that returns a new sorted list without modifying the input.\n\nBoth must handle edge cases: empty list, single element, all-duplicates.\nInclude thorough docstrings and a `__main__` block that generates a random list of 20 integers (seed the RNG with 42), sorts it with both implementations, and prints the results with timing via the `time` module."
+}

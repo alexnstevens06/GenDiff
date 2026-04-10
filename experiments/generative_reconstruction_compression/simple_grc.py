@@ -614,7 +614,7 @@ def main():
     tgt_text = open(tgt_path).read()
 
     # --- Load model ---
-    model_name = "Qwen/Qwen2.5-3B"
+    model_name = "Qwen/Qwen3.5-4B-Base"
     tokenizer  = AutoTokenizer.from_pretrained(model_name)
 
     try:

@@ -1,0 +1,5 @@
+{
+  "seed": 21,
+  "system": "You are an expert Python programmer. Write clean, idiomatic, well-commented code.",
+  "user": "Write a complete, self-contained Python module implementing a weighted directed graph using only the standard library.\n\nThe `Graph` class must support:\n  - `add_edge(self, u, v, weight: float) -> None`\n  - `bfs(self, start) -> list`   (BFS traversal order)\n  - `dfs(self, start) -> list`   (DFS traversal order)\n  - `dijkstra(self, start) -> dict`  (shortest distances from start to all nodes)\n  - `shortest_path(self, start, end) -> list`  (reconstructed node path)\n\nInclude thorough docstrings and a `__main__` block that constructs a graph of at least 7 nodes (e.g. a small city road network), runs all four methods from a chosen source, and prints the results in a readable format."
+}
