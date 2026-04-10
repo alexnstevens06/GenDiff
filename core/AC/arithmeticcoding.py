@@ -197,6 +197,11 @@ class ArithmeticEncoder(ArithmeticCoderBase):
         """Flush the encoder state so that the output can be decoded."""
         self.output.write(1)
         self._bits_written += 1
+        # Explicitly pad with 31 zeros to isolate the final fraction 
+        # from any subsequent metadata in a continuous bitstream.
+        for _ in range(31):
+            self.output.write(0)
+            self._bits_written += 1
 
     def shift(self):
         bit = self.low >> (self.STATE_SIZE - 1)
