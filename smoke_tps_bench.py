@@ -7,7 +7,6 @@ Smoke test + TPS benchmark for Qwen3.5-4B-Base on L4 GPU.
 """
 
 import time
-import sys
 import torch
 import numpy as np
 import matplotlib
@@ -47,7 +46,7 @@ def smoke_test():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     print(f"  Tokenizer loaded in {time.time()-t0:.1f}s")
 
-    print(f"  Loading model (bfloat16, device_map=auto)...")
+    print("  Loading model (bfloat16, device_map=auto)...")
     t0 = time.time()
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
@@ -154,7 +153,6 @@ def plot_tps(tps_per_token, out_path: str):
 
     # 5-token rolling mean for a smooth trend line
     window = 5
-    pad    = window // 2
     smooth = np.convolve(tps, np.ones(window) / window, mode="same")
 
     fig, ax = plt.subplots(figsize=(11, 5))
@@ -189,8 +187,8 @@ def plot_tps(tps_per_token, out_path: str):
     ax.set_ylim(bottom=0)
     ax.set_xlim(0.5, len(tps) + 0.5)
 
-    legend = ax.legend(framealpha=0.25, labelcolor="#e2e8f0", facecolor="#1e293b",
-                       edgecolor="#475569", fontsize=10)
+    ax.legend(framealpha=0.25, labelcolor="#e2e8f0", facecolor="#1e293b",
+              edgecolor="#475569", fontsize=10)
 
     # Annotate peak
     peak_idx = int(np.argmax(tps))

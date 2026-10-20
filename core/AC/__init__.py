@@ -4,3 +4,10 @@ from .arithmeticcoding import (
     BitInputStream,
     BitOutputStream,
 )
+
+__all__ = [
+    "ArithmeticEncoder",
+    "ArithmeticDecoder",
+    "BitInputStream",
+    "BitOutputStream",
+]

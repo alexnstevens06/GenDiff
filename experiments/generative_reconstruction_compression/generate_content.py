@@ -20,7 +20,6 @@ The OPENROUTER_API_KEY environment variable (or .env file) must be set.
 
 import argparse
 import os
-import sys
 
 from dotenv import load_dotenv
 from openrouter import OpenRouter

@@ -14,7 +14,6 @@ import io
 import json
 import os
 import sys
-import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Make project root importable

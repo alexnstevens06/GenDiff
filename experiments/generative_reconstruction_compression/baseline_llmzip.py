@@ -6,7 +6,7 @@ import numpy as np
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from core import LLMzip
-from core import BitInputStream, ArithmeticDecoder
+from core import ArithmeticDecoder, BitInputStream
 
 
 def main():
@@ -27,7 +27,7 @@ def main():
     with open(TARGET_PATH, "r") as f:
         target_text = f.read()
 
-    print(f"\n--- Encoding Baseline LLMzip ---")
+    print("\n--- Encoding Baseline LLMzip ---")
     start_time = time.time()
 
     # Encode with baseline
@@ -37,7 +37,7 @@ def main():
     print(f"\nEncoded AC Size: {encoded_size} bytes")
     print(f"Encoding Time:   {time.time() - start_time:.2f} seconds")
 
-    print(f"\n--- Decoding First 1/5 of Baseline LLMzip ---")
+    print("\n--- Decoding First 1/5 of Baseline LLMzip ---")
 
     # Calculate 1/5th tokens
     input_ids = tokenizer.encode(target_text, return_tensors='pt')[0]
@@ -50,8 +50,8 @@ def main():
 
     # Manual decode loop for partial decoding
     file_in = open(OUTPUT_PATH, 'rb')
-    bitin = arithmeticcoding.BitInputStream(file_in)
-    dec = arithmeticcoding.ArithmeticDecoder(32, bitin)
+    bitin = BitInputStream(file_in)
+    dec = ArithmeticDecoder(32, bitin)
 
     vocab_size = compressor.vocab_size
     uniform_cumul = np.arange(vocab_size + 1, dtype=np.uint64)
@@ -96,7 +96,7 @@ def main():
     file_in.close()
 
     decoded_text = tokenizer.decode(decoded_tokens)
-    print(f"\n\n--- Decoded Output snippet (1/5) ---")
+    print("\n\n--- Decoded Output snippet (1/5) ---")
     print(decoded_text)
     print("-" * 40)
     print(f"Decoding Time: {time.time() - start_time:.2f} seconds")

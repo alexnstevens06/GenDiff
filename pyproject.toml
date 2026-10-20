@@ -18,5 +18,49 @@ dependencies = [
     "python-dotenv",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["core", "experiments", "utils"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "test_continuous_bitstream.py", "test_ac_rewind.py"]
+addopts = "-q"
+markers = [
+    "gpu: downloads a language model and needs a GPU; not run in CI",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = ["experiments/benchmark_programs"]
+
+[tool.ruff.lint]
+# Pyflakes plus pycodestyle's error codes. This is the historical Ruff
+# default. Ruff 0.17's built-in default also enables a wide style set that
+# would restyle the research scripts and the generated benchmark programs.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# These files put the repository root on sys.path, or select a matplotlib
+# backend, before the rest of their imports.
+"core/encode_story.py" = ["E402"]
+"core/decode_story.py" = ["E402"]
+"experiments/generative_reconstruction_compression/run_benchmark.py" = ["E402"]
+"compression_benchmark.py" = ["E402"]
+"smoke_tps_bench.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["core", "utils", "tests"]
+mypy_path = "."
+explicit_package_bases = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+pretty = true
+show_error_codes = true

@@ -1,24 +1,32 @@
-from llmzip_qwen import LLMzipQwen
+"""Encode a text file with LLMzip.
+
+Run from the repository root:
+
+    python core/encode_story.py --model Qwen/Qwen3.5-4B-Base \\
+        --input corpus/ancient_rome.txt --output ancient_rome.llmzip
+"""
+
 import argparse
 import os
 import sys
 import time
+
+# The script lives in core/, so a direct `python core/encode_story.py`
+# would not find the package unless the repository root is on the path.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# Override for Navi 22 (RX 6700 XT) support on ROCm
-os.environ["HSA_OVERRIDE_GFX_VERSION"] = "10.3.0"
-
-# Add experiments and core to path to find modules
-sys.path.append(os.path.join(os.path.dirname(
-    os.path.abspath(__file__)), "../experiments"))
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from core.llmzip_utils import LLMzip
 
 
 def main():
     parser = argparse.ArgumentParser(description="LLMzip encoding wrapper")
     parser.add_argument("--model", type=str, required=True,
-                        help="Path to model")
+                        help="Hugging Face model id or local path")
     parser.add_argument("--input", type=str, required=True,
                         help="Input text file")
     parser.add_argument("--output", type=str, required=True,
@@ -31,21 +39,28 @@ def main():
     print(f"Loading {args.model}...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
-    # Check if model supports standard loading (some multimodal models need specific classes)
-    # For now, standard AutoModel
-    dtype = torch.bfloat16 if args.bf16 else (
-        torch.float16 if torch.cuda.is_available() else "auto")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if args.bf16:
+        dtype = torch.bfloat16
+    elif device == "cuda":
+        dtype = torch.float16
+    else:
+        dtype = "auto"
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         torch_dtype=dtype,
-        device_map="cuda" if torch.cuda.is_available() else "cpu",
+        device_map=device,
         trust_remote_code=True,
     )
     model.eval()
 
-    llmzip = LLMzipQwen(model, tokenizer, device="cuda" if torch.cuda.is_available(
-    ) else "cpu", max_window=args.window_size)
+    llmzip = LLMzip(
+        model,
+        tokenizer,
+        device=device,
+        max_window=args.window_size,
+    )
 
     with open(args.input, "r", encoding="utf-8") as f:
         text = f.read()

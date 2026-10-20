@@ -16,7 +16,6 @@
 #
 
 import sys
-import numpy as np
 
 python3 = sys.version_info.major >= 3
 
@@ -194,11 +193,16 @@ class ArithmeticEncoder(ArithmeticCoderBase):
         self.update(cumul, symbol)
 
     def finish(self):
-        """Flush the encoder state so that the output can be decoded."""
+        """Flush the encoder so a decoder that treats EOF as zero can finish.
+
+        The terminating 1 plus 31 zeros covers a stream that ends here. It does
+        not align a following field: the decoder's lookahead reads a variable
+        number of bits past this trailer. Concatenated blocks use
+        ``core.ac_frame``, which records the payload length and pads extra zeros
+        inside that length.
+        """
         self.output.write(1)
         self._bits_written += 1
-        # Explicitly pad with 31 zeros to isolate the final fraction 
-        # from any subsequent metadata in a continuous bitstream.
         for _ in range(31):
             self.output.write(0)
             self._bits_written += 1
