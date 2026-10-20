@@ -1,7 +1,7 @@
 """
 gzip vs LLMzip benchmark
 ========================
-Compresses the same text corpus with:
+Compresses every ``corpus/*.txt`` file with:
   1. gzip (levels 1, 6, 9)
   2. LLMzip (Qwen3.5-4B-Base, bfloat16, KV-cache)
 
@@ -11,22 +11,17 @@ Saves a bar + timing chart to compression_benchmark.png.
 Run from project root:
     python3 compression_benchmark.py
 
-Corpus: enwik8 first 100KB slice (inline download if not cached)
-        + the nbody candidate files in the repo for a code sample
+This downloads the Hugging Face model on first run. It is not part of CI.
 """
 
 import gzip
-import hashlib
-import io
 import os
 import sys
 import time
-import urllib.request
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -35,9 +30,6 @@ from core import LLMzip
 
 MODEL_NAME   = "Qwen/Qwen3.5-4B-Base"
 PLOT_PATH    = "compression_benchmark.png"
-ENWIK8_CACHE = "/tmp/enwik8_100k.txt"
-ENWIK8_URL   = "https://mattmahoney.net/dc/enwik8"
-SLICE_BYTES  = 100_000   # first 100 KB of enwik8
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -156,7 +148,7 @@ def plot_results(results: list):
         ax.set_facecolor(CARD)
         labels = [r["method"] for r in rows]
         bpcs   = [r["bpc"]    for r in rows]
-        colors = [palette.get(l, "#94a3b8") for l in labels]
+        colors = [palette.get(label, "#94a3b8") for label in labels]
 
         bars = ax.bar(labels, bpcs, color=colors, edgecolor="#334155",
                       linewidth=0.8, zorder=2)

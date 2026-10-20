@@ -1,5 +1,3 @@
-import builtins
-
 class ContinuousBitStream:
     """
     A bit stream backed by a bytearray that natively supports reading, writing, 
@@ -33,10 +31,11 @@ class ContinuousBitStream:
             
         byte_idx = self._bit_pos // 8
         bit_idx = 7 - (self._bit_pos % 8)
-        
-        # Grow buffer if needed
+
+        # A seek past the end leaves a gap. Fill it before writing.
         if byte_idx >= len(self._buffer):
-            self._buffer.append(0)
+            missing = byte_idx + 1 - len(self._buffer)
+            self._buffer.extend(b"\x00" * missing)
             
         if bit:
             self._buffer[byte_idx] |= (1 << bit_idx)
@@ -52,6 +51,10 @@ class ContinuousBitStream:
 
     def write_uint(self, val: int, num_bits: int):
         """Write an unsigned integer of a specific bit width."""
+        if num_bits < 0:
+            raise ValueError("num_bits must be non-negative")
+        if val < 0 or val.bit_length() > num_bits:
+            raise ValueError(f"{val} does not fit in {num_bits} bits")
         for i in range(num_bits - 1, -1, -1):
             self.write((val >> i) & 1)
 
@@ -76,6 +79,8 @@ class ContinuousBitStream:
 
     def read_uint(self, num_bits: int) -> int:
         """Read an unsigned integer of a specific bit width."""
+        if num_bits < 0:
+            raise ValueError("num_bits must be non-negative")
         val = 0
         for _ in range(num_bits):
             b = self.read()

@@ -1,15 +1,15 @@
 import sys
 import os
-import io
-import math
-import torch
-import numpy as np
 import difflib
+
+import numpy as np
+import torch
 
 # Add root GenDiff to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from core import LLMzip
 from core.AC import arithmeticcoding
+from core.ac_frame import close_frame, encode_framed, open_frame
 from core.continuous_bitstream import ContinuousBitStream
 
 # ---------------------------------------------------------------------------
@@ -21,9 +21,17 @@ DEFAULT_CONTEXT_WINDOW = 50
 # Utility Functions
 # ---------------------------------------------------------------------------
 def bit_cost(n: int) -> int:
-    """Returns ceiling(log_2(n)). Minimum 1 bit if n <= 1."""
-    if n <= 1: return 1
-    return math.ceil(math.log2(n))
+    """Bits needed to encode an integer in ``0 .. n`` inclusive.
+
+    ``ceil(log2(n))`` cannot represent ``n`` when ``n`` is a power of two
+    (a jump or delete of every remaining reference token). ``n.bit_length()``
+    is the smallest width that includes ``n``.
+    """
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    if n == 0:
+        return 1
+    return n.bit_length()
 
 # ---------------------------------------------------------------------------
 # Encoder
@@ -69,20 +77,14 @@ def encode_pointer_grczip(
 
         # 1. Delta Pointer Jump
         jump = i1 - current_ref_idx
-        if rem_ref <= 0:
-            jump_bits = 1
-        else:
-            jump_bits = bit_cost(rem_ref)
+        jump_bits = bit_cost(rem_ref)
         stream.write_uint(jump, jump_bits)
-        
+
         current_ref_idx += jump
-        
+
         # 2. Delete Count
         new_rem_ref = len(ref_tokens) - current_ref_idx
-        if new_rem_ref <= 0:
-            del_bits = 1
-        else:
-            del_bits = bit_cost(new_rem_ref)
+        del_bits = bit_cost(new_rem_ref)
         stream.write_uint(del_count, del_bits)
         
         current_ref_idx += del_count
@@ -107,52 +109,49 @@ def _encode_payload_segment(
     llmzip: LLMzip,
     context_window: int
 ):
-    """Encodes an insertion using ArithmeticCoding on the continuous stream."""
-    enc = arithmeticcoding.ArithmeticEncoder(32, stream)
-    
-    past_kv = None
-    cache_len = 0
-    
-    eos_token = llmzip.eos_id
-    vocab_size = llmzip.vocab_size
+    """Encode an insertion as a length-prefixed arithmetic block."""
 
-    tokens_to_encode = list(target_tokens) + [eos_token]
+    def _write(enc: arithmeticcoding.ArithmeticEncoder) -> None:
+        past_kv = None
+        cache_len = 0
 
-    ctx = list(context_tokens[-context_window:]) if context_tokens else []
-    if ctx:
-        ctx_tensor = torch.tensor([ctx], device=llmzip.device)
-        probs_first, past_kv = llmzip._get_probs(ctx_tensor)
-        cache_len = len(ctx)
-        cumul = llmzip._probs_to_cumul(probs_first)
-        enc.write(cumul, tokens_to_encode[0])
-        start_i = 1
-    else:
-        uniform_cumul = np.arange(vocab_size + 1, dtype=np.uint64)
-        enc.write(uniform_cumul, tokens_to_encode[0])
-        start_i = 1
+        eos_token = llmzip.eos_id
+        vocab_size = llmzip.vocab_size
+        tokens_to_encode = list(target_tokens) + [eos_token]
 
-    for i in range(start_i, len(tokens_to_encode)):
-        if past_kv is not None and (not llmzip._vram_is_safe() or cache_len >= llmzip.max_pos_len):
-            past_kv = None
-            cache_len = 0
-            llmzip._evict_cache()
-
-        if past_kv is None:
-            recent_ctx = (ctx + tokens_to_encode[:i])[-llmzip.max_window:]
-            ctx_t = torch.tensor([recent_ctx], device=llmzip.device)
-            probs, past_kv = llmzip._get_probs(ctx_t)
-            cache_len = len(recent_ctx)
+        ctx = list(context_tokens[-context_window:]) if context_tokens else []
+        if ctx:
+            ctx_tensor = torch.tensor([ctx], device=llmzip.device)
+            probs_first, past_kv = llmzip._get_probs(ctx_tensor)
+            cache_len = len(ctx)
+            cumul = llmzip._probs_to_cumul(probs_first)
+            enc.write(cumul, tokens_to_encode[0])
+            start_i = 1
         else:
-            prev_tok = torch.tensor([[tokens_to_encode[i - 1]]], device=llmzip.device)
-            probs, past_kv = llmzip._get_probs(prev_tok, past_kv)
-            cache_len += 1
+            uniform_cumul = np.arange(vocab_size + 1, dtype=np.uint64)
+            enc.write(uniform_cumul, tokens_to_encode[0])
+            start_i = 1
 
-        cumul = llmzip._probs_to_cumul(probs)
-        enc.write(cumul, tokens_to_encode[i])
+        for i in range(start_i, len(tokens_to_encode)):
+            if past_kv is not None and (not llmzip._vram_is_safe() or cache_len >= llmzip.max_pos_len):
+                past_kv = None
+                cache_len = 0
+                llmzip._evict_cache()
 
-    enc.finish()
-    # No trailing zeros or byte-alignment necessary. The 31 zeroes explicit in
-    # `enc.finish()` handles isolation flawlessly.
+            if past_kv is None:
+                recent_ctx = (ctx + tokens_to_encode[:i])[-llmzip.max_window:]
+                ctx_t = torch.tensor([recent_ctx], device=llmzip.device)
+                probs, past_kv = llmzip._get_probs(ctx_t)
+                cache_len = len(recent_ctx)
+            else:
+                prev_tok = torch.tensor([[tokens_to_encode[i - 1]]], device=llmzip.device)
+                probs, past_kv = llmzip._get_probs(prev_tok, past_kv)
+                cache_len += 1
+
+            cumul = llmzip._probs_to_cumul(probs)
+            enc.write(cumul, tokens_to_encode[i])
+
+    encode_framed(stream, _write)
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +182,7 @@ def decode_pointer_grczip(
             break
             
         rem_ref = len(ref_tokens) - current_ref_idx
-        jump_bits = bit_cost(rem_ref) if rem_ref > 0 else 1
+        jump_bits = bit_cost(rem_ref)
         jump = stream.read_uint(jump_bits)
         
         # 1. Implicit copy of skipped reference tokens
@@ -191,7 +190,7 @@ def decode_pointer_grczip(
         current_ref_idx += jump
         
         new_rem_ref = len(ref_tokens) - current_ref_idx
-        del_bits = bit_cost(new_rem_ref) if new_rem_ref > 0 else 1
+        del_bits = bit_cost(new_rem_ref)
         del_count = stream.read_uint(del_bits)
         
         current_ref_idx += del_count
@@ -215,48 +214,54 @@ def _decode_payload_segment(
     llmzip: LLMzip,
     context_window: int
 ) -> list:
-    dec = arithmeticcoding.ArithmeticDecoder(32, stream)
-    out_ids = []
-    
-    past_kv = None
-    cache_len = 0
-    vocab_size = llmzip.vocab_size
-    eos_id = llmzip.eos_id
-    
-    ctx = list(context_tokens[-context_window:]) if context_tokens else []
-    
-    if ctx:
-        ctx_tensor = torch.tensor([ctx], device=llmzip.device)
-        probs_first, past_kv = llmzip._get_probs(ctx_tensor)
-        cache_len = len(ctx)
-        cumul = llmzip._probs_to_cumul(probs_first)
-    else:
-        uniform_cumul = np.arange(vocab_size + 1, dtype=np.uint64)
-        cumul = uniform_cumul
-        
-    while True:
-        token_id = dec.read(cumul, vocab_size)
-        if token_id == eos_id:
-            break
-            
-        out_ids.append(token_id)
-        
-        if past_kv is not None and (not llmzip._vram_is_safe() or cache_len >= llmzip.max_pos_len):
-            past_kv = None
-            cache_len = 0
-            llmzip._evict_cache()
+    frame = open_frame(stream)
+    dec = frame.decoder
+    try:
+        out_ids = []
 
-        if past_kv is None:
-            recent_ctx = (ctx + out_ids)[-llmzip.max_window:]
-            ctx_t = torch.tensor([recent_ctx], device=llmzip.device)
-            probs, past_kv = llmzip._get_probs(ctx_t)
-            cache_len = len(recent_ctx)
+        past_kv = None
+        cache_len = 0
+        vocab_size = llmzip.vocab_size
+        eos_id = llmzip.eos_id
+
+        ctx = list(context_tokens[-context_window:]) if context_tokens else []
+
+        if ctx:
+            ctx_tensor = torch.tensor([ctx], device=llmzip.device)
+            probs_first, past_kv = llmzip._get_probs(ctx_tensor)
+            cache_len = len(ctx)
+            cumul = llmzip._probs_to_cumul(probs_first)
         else:
-            prev_tok = torch.tensor([[token_id]], device=llmzip.device)
-            probs, past_kv = llmzip._get_probs(prev_tok, past_kv)
-            cache_len += 1
+            uniform_cumul = np.arange(vocab_size + 1, dtype=np.uint64)
+            cumul = uniform_cumul
 
-        cumul = llmzip._probs_to_cumul(probs)
-        
-    return out_ids
+        while True:
+            token_id = dec.read(cumul, vocab_size)
+            if token_id == eos_id:
+                break
+
+            out_ids.append(token_id)
+
+            if past_kv is not None and (
+                not llmzip._vram_is_safe() or cache_len >= llmzip.max_pos_len
+            ):
+                past_kv = None
+                cache_len = 0
+                llmzip._evict_cache()
+
+            if past_kv is None:
+                recent_ctx = (ctx + out_ids)[-llmzip.max_window:]
+                ctx_t = torch.tensor([recent_ctx], device=llmzip.device)
+                probs, past_kv = llmzip._get_probs(ctx_t)
+                cache_len = len(recent_ctx)
+            else:
+                prev_tok = torch.tensor([[token_id]], device=llmzip.device)
+                probs, past_kv = llmzip._get_probs(prev_tok, past_kv)
+                cache_len += 1
+
+            cumul = llmzip._probs_to_cumul(probs)
+
+        return out_ids
+    finally:
+        close_frame(frame)
 

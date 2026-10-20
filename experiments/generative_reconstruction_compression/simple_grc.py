@@ -57,18 +57,21 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from core import LLMzip, BitInputStream, BitOutputStream
 from core.AC import arithmeticcoding
 
+from .diff_ops import (
+    BLOB_BITS,
+    LEN_BITS,
+    MAX_RUN,
+    MIN_EQUAL_TOKENS,
+    OPCODE_DELETE,
+    OPCODE_EOS,
+    OPCODE_EQUAL,
+    OPCODE_INSERT,
+    SEED_BITS,
+    coalesce_opcodes,
+    write_count_opcode,
+    write_uint,
+)
 
-# ---------------------------------------------------------------------------
-# Opcode table
-# ---------------------------------------------------------------------------
-OPCODE_EQUAL  = (0, 0)
-OPCODE_DELETE = (1, 0)
-OPCODE_INSERT = (1, 1)
-OPCODE_EOS    = (0, 1)
-
-LEN_BITS   = 16   # bit-width for EQUAL / DELETE token counts  (max 65535 tokens)
-BLOB_BITS  = 16   # bit-width for INSERT blob byte count       (max 65535 bytes)
-SEED_BITS  = 32   # bit-width for the random seed integer
 STATE_SIZE = 32   # arithmetic coder state bits
 
 # Default sliding context window (token count from previous output)
@@ -85,12 +88,6 @@ llmzip     = None
 # ---------------------------------------------------------------------------
 # Bit-level helpers
 # ---------------------------------------------------------------------------
-
-def write_uint(bitout: BitOutputStream, value: int, num_bits: int):
-    """Write value as a big-endian num_bits-wide unsigned integer."""
-    for i in range(num_bits - 1, -1, -1):
-        bitout.write((value >> i) & 1)
-
 
 def read_uint(bitin: BitInputStream, num_bits: int) -> int:
     """Read num_bits bits from bitin, return as a big-endian unsigned int."""
@@ -202,7 +199,13 @@ def encode_segment_to_bitout(
     blob = inner_buf.getvalue()
     io.BytesIO.close(inner_buf)
 
-    # 3) Write 16-bit blob length + blob into outer stream
+    # 3) Write 16-bit blob length + blob into outer stream.
+    # A length that does not fit used to be truncated, so the decoder read
+    # the wrong number of bytes. Fail instead of writing a corrupt stream.
+    if len(blob) > MAX_RUN:
+        raise ValueError(
+            f"INSERT segment is {len(blob)} bytes; the length field is {BLOB_BITS} bits"
+        )
     write_uint(bitout, len(blob), BLOB_BITS)
     for byte in blob:
         for shift in range(7, -1, -1):
@@ -360,95 +363,6 @@ def reconstruct_diffs(
     return output_tokens
 
 
-# ---------------------------------------------------------------------------
-# Opcode coalescing — merge small EQUAL runs into surrounding INSERTs
-# ---------------------------------------------------------------------------
-
-# Overhead per INSERT/REPLACE segment (in bits):
-#   opcode (2) + blob-length prefix (16) + byte-alignment padding (~4)
-#   + EOS token in AC stream (~15)  ≈ 37 bits
-# Overhead of an EQUAL opcode: 2 + 16 = 18 bits
-# Keeping INSERT|EQUAL(N)|INSERT as three ops costs ~92 bits of overhead.
-# Merging into one INSERT costs ~37 bits + N × avg_bits_per_token (~5).
-# Break-even: N ≈ (92 - 37) / 5 ≈ 11 tokens.
-MIN_EQUAL_TOKENS = 12   # EQUAL runs shorter than this are absorbed into INSERTs
-
-
-def coalesce_opcodes(
-    opcodes: list,
-    ref_tokens: list,
-    tgt_tokens: list,
-    min_equal: int = MIN_EQUAL_TOKENS,
-) -> list:
-    """
-    Post-process difflib opcodes to merge small EQUAL regions into
-    adjacent INSERT/REPLACE regions.
-
-    An EQUAL region of fewer than `min_equal` tokens that sits between
-    two "modifying" operations (insert, replace, or delete+insert) is
-    absorbed: the tokens it covers are folded into a single larger
-    REPLACE operation that spans the combined range.
-
-    This dramatically reduces the number of AC segment blobs (and their
-    per-segment overhead) at the cost of re-encoding a few tokens that
-    were previously free EQUAL copies.
-
-    Returns a new opcode list in the same (tag, i1, i2, j1, j2) format.
-    """
-    if not opcodes:
-        return opcodes
-
-    merged = list(opcodes)
-    changed = True
-
-    while changed:
-        changed = False
-        new = []
-        i = 0
-        while i < len(merged):
-            # Look for pattern: [modifying] [small EQUAL] [modifying]
-            if (i + 2 < len(merged)
-                    and merged[i][0] in ("insert", "replace", "delete")
-                    and merged[i + 1][0] == "equal"
-                    and merged[i + 2][0] in ("insert", "replace", "delete")
-                    and (merged[i + 1][2] - merged[i + 1][1]) < min_equal):
-
-                # Merge all three into one replace spanning the full range
-                a = merged[i]
-                eq = merged[i + 1]
-                b = merged[i + 2]
-
-                # Combined ref range: from start of a to end of b
-                ri1 = a[1]
-                ri2 = b[2]
-                # Combined tgt range: from start of a to end of b
-                rj1 = a[3]
-                rj2 = b[4]
-
-                new.append(("replace", ri1, ri2, rj1, rj2))
-                i += 3
-                changed = True
-            else:
-                new.append(merged[i])
-                i += 1
-        merged = new
-
-    # Clean up: adjacent replaces can be merged
-    final = []
-    for op in merged:
-        if (final
-                and final[-1][0] == "replace"
-                and op[0] == "replace"
-                and final[-1][2] == op[1]
-                and final[-1][4] == op[3]):
-            prev = final.pop()
-            final.append(("replace", prev[1], op[2], prev[3], op[4]))
-        else:
-            final.append(op)
-
-    return final
-
-
 def _summarize_opcodes(opcodes, ref_tokens, tgt_tokens):
     """Print a brief summary of the opcode list for debugging."""
     counts = {}
@@ -496,7 +410,7 @@ def write_grczip(
     matcher = difflib.SequenceMatcher(None, ref_tokens, tgt_tokens, autojunk=False)
 
     raw_opcodes = matcher.get_opcodes()
-    print(f"\n  Before coalescing:")
+    print("\n  Before coalescing:")
     _summarize_opcodes(raw_opcodes, ref_tokens, tgt_tokens)
 
     opcodes = coalesce_opcodes(raw_opcodes, ref_tokens, tgt_tokens)
@@ -511,16 +425,12 @@ def write_grczip(
 
         if tag == "equal":
             toks = ref_tokens[i1:i2]
-            for bit in OPCODE_EQUAL:
-                bitout.write(bit)
-            write_uint(bitout, len(toks), LEN_BITS)
+            write_count_opcode(bitout, OPCODE_EQUAL, len(toks))
             context_tokens.extend(toks)
 
         elif tag == "delete":
             toks = ref_tokens[i1:i2]
-            for bit in OPCODE_DELETE:
-                bitout.write(bit)
-            write_uint(bitout, len(toks), LEN_BITS)
+            write_count_opcode(bitout, OPCODE_DELETE, len(toks))
             # Deleted tokens NOT added to context
 
         elif tag == "insert":
@@ -539,9 +449,7 @@ def write_grczip(
             del_toks = ref_tokens[i1:i2]
             ins_toks = tgt_tokens[j1:j2]
 
-            for bit in OPCODE_DELETE:
-                bitout.write(bit)
-            write_uint(bitout, len(del_toks), LEN_BITS)
+            write_count_opcode(bitout, OPCODE_DELETE, len(del_toks))
 
             for bit in OPCODE_INSERT:
                 bitout.write(bit)
@@ -674,14 +582,13 @@ def main():
     # ====================================================================
     # 3. Baseline: LLMzip of the revised program
     # ====================================================================
-    print(f"\n=== Baseline: LLMzip encoding of revised program ===")
+    print("\n=== Baseline: LLMzip encoding of revised program ===")
     llmzip_bytes = llmzip.encode(tgt_text, output_file=llmzip_path)
 
     # ====================================================================
     # 4. Size comparison table
     # ====================================================================
     tgt_bytes = len(tgt_text.encode("utf-8"))
-    ref_bytes = len(ref_text.encode("utf-8"))
 
     print("\n========== Size Comparison ==========")
     print(f"  Original revised file:   {tgt_bytes:>7} bytes  ({tgt_bytes*8/len(tgt_text):.2f} bits/char)")
@@ -690,7 +597,7 @@ def main():
 
     # GRC breakdown (crude: seed=4B, everything else is prompt+diffs)
     seed_bytes   = SEED_BITS // 8
-    print(f"\n  GRC breakdown:")
+    print("\n  GRC breakdown:")
     print(f"    Seed field:    {seed_bytes} bytes (fixed)")
     print(f"    Prompt+diffs:  {len(compressed) - seed_bytes} bytes")
     print(f"    GRC vs LLMzip: {len(compressed)/len(llmzip_bytes)*100:.1f}% of LLMzip baseline size")

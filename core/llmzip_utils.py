@@ -29,7 +29,7 @@ import sys
 import torch
 import numpy as np
 import io
-from typing import Optional, Tuple, Any, Union
+from typing import Any, BinaryIO, Optional, Tuple, Union
 
 # ROCm environment override for Navi 22/23/24 support
 if sys.platform.startswith("linux"):
@@ -67,7 +67,7 @@ class LLMzip:
         self,
         model: Any,
         tokenizer: Any,
-        device: str = 'cuda',
+        device: Optional[str] = None,
         max_window: int = 50,
         min_free_vram: int = 512 * 1024 * 1024
     ):
@@ -77,12 +77,15 @@ class LLMzip:
         Args:
             model: transformers.PreTrainedModel (CausalLM).
             tokenizer: transformers.PreTrainedTokenizer.
-            device: String representing the device.
+            device: String representing the device. Defaults to CUDA when it is
+                available, and to CPU otherwise.
             max_window: How many tokens of context to use if KV cache is reset.
             min_free_vram: Minimum free VRAM in bytes to maintain (default 0.5 GB).
         """
         self.model = model
         self.tokenizer = tokenizer
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = device
         self.max_window = max_window
         self.min_free_vram = min_free_vram
@@ -107,7 +110,6 @@ class LLMzip:
         Call this after finished with encodes/decodes to release GPU memory.
         """
         if self.device == 'cuda' or 'cuda' in str(self.device):
-            import torch
             torch.cuda.empty_cache()
             print("VRAM buffer cleared.")
         else:
@@ -301,7 +303,7 @@ class LLMzip:
             with open(output_file, 'wb') as f:
                 f.write(compressed_bytes)
 
-        print(f"\nEncoding complete.")
+        print("\nEncoding complete.")
         self._print_stats(text, len(compressed_bytes), output_file)
         return compressed_bytes
 
@@ -319,6 +321,7 @@ class LLMzip:
             It is recommended to call .cleanup() after this method if you are 
             finished with heavy GPU operations.
         """
+        file_in: BinaryIO
         if isinstance(input_data, str):
             if not os.path.exists(input_data):
                 raise FileNotFoundError(f"Input file {input_data} not found.")
